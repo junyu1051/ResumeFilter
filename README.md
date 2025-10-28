@@ -65,7 +65,7 @@ Visit [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) for Swagger UI.
 - Don’t push your `.venv` — it’s in `.gitignore` for a reason.  
 - Don’t commit `.env` either — that’s how you leak passwords.  
 - Use `pip freeze > requirements.txt` if you install new packages.  
-- Always run `git pull` before you start editing — don’t be *that* guy.
+- Always run `git pull` before you start editing.
 
 ---
 
