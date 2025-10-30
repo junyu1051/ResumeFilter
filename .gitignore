@@ -36,6 +36,5 @@ coverage/
 dist/
 build/
 eggs/
-.app/config/__pycache__/database.cpython-313.pyc
-.app/controller/__pycache__/user_controller.cpython-313.pyc
+
 resumes/
