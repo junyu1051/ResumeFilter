@@ -1,16 +1,41 @@
-# Python & venv
-.venv/
-venv/
-__pycache__/
-*.pyc
-
-# Environment
+# Ignore environment files
 .env
+.venv/
+*.env
+*.venv
 
-# IDE
-.vscode/
+# Ignore Python bytecode files, except pycache
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore temporary files and folders
+*.swp
+*.swo
+*~
+*.bak
+
+# Ignore log files
+*.log
+
+# Ignore IDE specific files
 .idea/
+.vscode/
 
-# OS
+# Ignore system files
 .DS_Store
 Thumbs.db
+
+# Ignore test output
+coverage/
+*.cover
+
+# Ignore package distribution artifacts
+*.egg
+*.egg-info
+dist/
+build/
+eggs/
+.app/config/__pycache__/database.cpython-313.pyc
+.app/controller/__pycache__/user_controller.cpython-313.pyc
+resumes/

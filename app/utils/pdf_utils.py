@@ -1,48 +1,68 @@
 import re
+import spacy
 from PyPDF2 import PdfReader
 
-def scan_pdf(pdf_file):
+# Load spaCy's pre-trained English model
+nlp = spacy.load("en_core_web_sm")
+
+def scan_pdf(file_path):
     try:
-        reader = PdfReader(pdf_file)
-        text = ''
-        for page in reader.pages:
-            text += page.extract_text()
+        # Read the PDF file from the given file path
+        with open(file_path, "rb") as f:
+            reader = PdfReader(f)
+            text = ''
+            for page in reader.pages:
+                text += page.extract_text()
 
-        # Basic parsing using regex and simple string matching
+        # Use spaCy to process the extracted text
+        doc = nlp(text)
 
-`        # Extract name (assuming the first line is the name)
-`        name = text.split("\n")[0].strip()  # Simplistic approach
-
-        # Extract phone number using regex (formats like 123-456-7890 or (123) 456-7890)
-        phone_number = re.search(r'(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})', text)
-        phone_number = phone_number.group(0) if phone_number else "Not found"
-
-        # Extract birthday using regex (formats like 1990-01-01 or 01/01/1990)
-        birthday = re.search(r'\b(\d{4}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]\d{4})\b', text)
-        birthday = birthday.group(0) if birthday else "Not found"
-
-        # Dummy extraction for working experience (this should be customized based on the resume structure)
-        working_exp = "5 years of experience" if "experience" in text.lower() else "Not specified"
-
-        # Extract education (assuming it's after a certain keyword like 'Education')
-        education = "Bachelor's in Computer Science" if "education" in text.lower() else "Not specified"
-
-        # Extract area (assuming it's specified as 'Location' or similar)
-        area = "Software Engineering" if "Software" in text else "Not specified"
-
-        # Resume URL (if found in the text, or we assume it's an internal path)
-        resume_url = "path_to_resume"  # Can be updated if a URL is found in the PDF text
-
+        # Initialize resume_data dictionary
         resume_data = {
-            'name': name,
-            'phone_number': phone_number,
-            'birthday': birthday,
-            'working_exp': working_exp,
-            'education': education,
-            'area': area,
-            'resume_url': resume_url
+            'name': None,
+            'phone_number': None,
+            'birthday': None,
+            'working_exp': None,
+            'education': [],
+            'skills': [],
+            'area': None,
+            'resume_url': file_path
         }
 
+        # Extract named entities using spaCy NER
+        for ent in doc.ents:
+            if ent.label_ == "PERSON" and not resume_data['name']:
+                resume_data['name'] = ent.text
+            elif ent.label_ == "DATE" and not resume_data['birthday']:
+                resume_data['birthday'] = ent.text
+            elif ent.label_ == "GPE" and not resume_data['area']:
+                resume_data['area'] = ent.text
+
+        # Extract phone number
+        phone_pattern = r'(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})'
+        phone_match = re.search(phone_pattern, text)
+        if phone_match:
+            resume_data['phone_number'] = phone_match.group(0)
+
+        # Extract skills
+        skills_keywords = ['python', 'java', 'c++', 'javascript', 'sql', 'react', 'angular', 'vue', 'node.js', 'django', 'flask']
+        for keyword in skills_keywords:
+            if re.search(r'\b' + keyword + r'\b', text, re.IGNORECASE):
+                resume_data['skills'].append(keyword)
+
+        # Extract education
+        education_section = re.search(r'Education\n([\s\S]*?)(?=\n\n|\Z)', text, re.IGNORECASE)
+        if education_section:
+            education_text = education_section.group(1)
+            # Simple split by newline, can be improved
+            resume_data['education'] = [line.strip() for line in education_text.split('\n') if line.strip()]
+
+        # Extract work experience
+        experience_section = re.search(r'(Experience|Work History|Professional Experience)\n([\s\S]*?)(?=\n\n|Education|Skills|\Z)', text, re.IGNORECASE)
+        if experience_section:
+            resume_data['working_exp'] = experience_section.group(2).strip()
+
         return resume_data
+
     except Exception as e:
         return {'error': str(e)}
