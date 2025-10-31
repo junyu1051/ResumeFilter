@@ -6,6 +6,7 @@ from app.repository.resume_repository import ResumeRepository
 from app.repository.user_repository import UserRepository
 from fastapi.responses import JSONResponse
 import logging
+import base64
 
 class ResumeService:
     def __init__(self, resume_repository, user_repository):
