@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends,Query
 from fastapi.responses import JSONResponse
 from uuid import uuid4
 from app.service.resume_service import ResumeService
@@ -49,6 +49,33 @@ async def upload_resume(resume: UploadFile = File(...), db_session: Session = De
             raise HTTPException(status_code=500, detail="Internal Server Error")
     
     
+    
+@router.get("/resume/{resume_id}")
+async def get_resume_with_positions_and_skills(resume_id: str, db_session: Session = Depends(get_db)):
+    resume_repository = ResumeRepository(db_session)
+    user_repository = UserRepository()
+    resume_service = ResumeService(resume_repository, user_repository)
+
+    return await resume_service.get_resume_with_positions_and_skills(resume_id, db_session)
+
+
+
+
+@router.get("/list")
+async def list_resumes(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    db_session: Session = Depends(get_db)
+):
+    """Paginated query for resumes"""
+    resume_repository = ResumeRepository(db_session)
+    user_repository = UserRepository()
+    resume_service = ResumeService(resume_repository, user_repository)
+
+    resumes = await resume_service.get_all_resumes_paginated(page, page_size)
+    return JSONResponse(content={"data": resumes, "page": page, "page_size": page_size})
+
+
 
 
 @router.delete("/remove/{resume_id}")
@@ -60,18 +87,5 @@ async def remove_resume(resume_id: str, db_session: Session = Depends(get_db)):
     success = await resume_service.remove_resume(resume_id, db_session)
     if success:
         return JSONResponse(content={"message": "Resume removed successfully!"}, status_code=200)
-    else:
-        raise HTTPException(status_code=404, detail="Resume not found!")
-
-@router.get("/scan/{resume_id}")
-async def scan_resume(resume_id: str, db_session: Session = Depends(get_db)):
-    resume_repository = ResumeRepository(db_session)
-    user_repository = UserRepository()
-    resume_service = ResumeService(resume_repository, user_repository)
-
-    resume = resume_repository.get_resume_by_id(resume_id)  # Fetch resume by ID
-    if resume:
-        scanned_text = await resume_service.scan_resume(resume)
-        return JSONResponse(content={"scanned_text": scanned_text}, status_code=200)
     else:
         raise HTTPException(status_code=404, detail="Resume not found!")

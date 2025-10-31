@@ -3,6 +3,7 @@ from datetime import datetime
 from app.model.resume import ResumeDetail, Position, Skill
 from sqlalchemy.orm import sessionmaker
 import json
+import uuid
 
 # Helper function to parse birthday strings
 def _parse_birthday(birthday_str):
@@ -78,7 +79,11 @@ class ResumeRepository:
         self.db_session.add(new_position)
         self.db_session.commit()
         return new_position
-
+    
+#-----------------------------------------------------------------------------------------------
+#---------------save_skill--------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+       
     def save_skill(self, resume_id, skill_name, name, birthday):
         birthday_date = _parse_birthday(birthday)
         new_skill = Skill(
@@ -91,6 +96,77 @@ class ResumeRepository:
         self.db_session.commit()
         return new_skill
     
+   
+#-----------------------------------------------------------------------------------------------
+#---------------get_resume_detail_with_position_and_skill--------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+       
+    
+    def get_resume_detail_with_position_and_skill(self, resume_id_str):
+        # Log the input to verify the resume_id
+        print(f"Received resume_id: {resume_id_str}")  # Debugging print statement
+        
+        # Convert the string to UUID
+        try:
+            resume_id = uuid.UUID(resume_id_str)
+            print(f"Converted resume_id: {resume_id}")  # Log the converted UUID
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid resume_id format")
+        
+        # Fetch resume details
+        resume_detail = self.db_session.query(ResumeDetail).filter_by(resume_id=resume_id).first()
+        if not resume_detail:
+            return None
+        
+        # Fetch position details
+        positions = self.db_session.query(Position).filter_by(resume_id=resume_id).all()
+        
+        # Fetch skill details
+        skills = self.db_session.query(Skill).filter_by(resume_id=resume_id).all()
+        
+        # Return as a combined dictionary, convert UUID to string
+        return {
+            "resume_detail": {
+                "resume_id": str(resume_detail.resume_id),  # Convert UUID to string for JSON response
+                "name": resume_detail.name,
+                "phone_number": resume_detail.phone_number,
+                "birthday": resume_detail.birthday,
+                "working_exp": resume_detail.working_exp,
+                "education": resume_detail.education,
+                "area": resume_detail.area,
+                "resume_url": resume_detail.resume_url,
+                "operator": resume_detail.operator,
+                "user_id": resume_detail.user_id,
+            },
+            "positions": [{"position_id": str(position.position_id), "position_name": position.position_name} for position in positions],
+            "skills": [{"skill_id": str(skill.skill_id), "skill_name": skill.skill_name} for skill in skills]
+        }
+
+
+      
+#-----------------------------------------------------------------------------------------------
+#---------------get_paginated_resumes-----------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+    def get_paginated_resumes(self, offset: int, limit: int):
+        """Fetch paginated resumes with position info"""
+        query = (
+            self.db_session.query(
+                ResumeDetail.name,
+                ResumeDetail.operator,
+                ResumeDetail.gmt_create,
+                ResumeDetail.gmt_modify,
+                Position.position_name
+            )
+            .join(Position, Position.resume_id == ResumeDetail.resume_id)
+            .order_by(ResumeDetail.gmt_create.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return query.all()
+    
+
+
+
     def get_resumes_by_operator(self, operator):
         # Fetch all resumes uploaded by a specific operator (username)
         return self.db_session.query(ResumeDetail).filter_by(operator=operator).all()

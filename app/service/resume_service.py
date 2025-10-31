@@ -5,6 +5,7 @@ from app.utils.pdf_utils import scan_pdf
 from app.repository.resume_repository import ResumeRepository
 from app.repository.user_repository import UserRepository
 import logging
+from fastapi.responses import JSONResponse
 
 class ResumeService:
     def __init__(self, resume_repository, user_repository):
@@ -116,6 +117,46 @@ class ResumeService:
     
 
 #-----------------------------------------------------------------------------------------------
+#---------------get_resume_with_positions_and_skills-------------------------------------------
+#-----------------------------------------------------------------------------------------------
+
+
+    async def get_resume_with_positions_and_skills(self, resume_id, db_session):
+        resume_data = self.resume_repository.get_resume_detail_with_position_and_skill(resume_id)
+        if not resume_data:
+            raise HTTPException(status_code=404, detail="Resume not found")
+        
+        # Convert the result to JSON and return it
+        return JSONResponse(content=resume_data, status_code=200)
+
+#-----------------------------------------------------------------------------------------------
+#---------------get_all_resumes_paginated------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+ 
+    async def get_all_resumes_paginated(self, page: int, page_size: int):
+        """Paginate resumes"""
+        if page < 1 or page_size < 1:
+            raise HTTPException(status_code=400, detail="Invalid page or page_size")
+
+        offset = (page - 1) * page_size
+        resumes = self.resume_repository.get_paginated_resumes(offset, page_size)
+
+        if not resumes:
+            raise HTTPException(status_code=404, detail="No resumes found")
+
+        # Convert results to list of dicts (JSON serializable)
+        result = [
+            {
+                "name": r.name,
+                "operator": r.operator,
+                "gmt_create": str(r.gmt_create),
+                "gmt_modify": str(r.gmt_modify),
+                "position_name": r.position_name
+            }
+            for r in resumes
+        ]
+        return result
+#-----------------------------------------------------------------------------------------------
 #---------------remove resume--------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------------
 
@@ -157,3 +198,5 @@ class ResumeService:
         # This will be used to scan the PDF and extract data
         # Assuming resume object has a 'resume_url' attribute with the file path
         return scan_pdf(resume.resume_url)
+
+
