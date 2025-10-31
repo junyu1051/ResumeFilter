@@ -1,5 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends,Query
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends,Query ,Request
+from fastapi.responses import JSONResponse ,FileResponse
 from uuid import uuid4
 from app.service.resume_service import ResumeService
 from app.repository.resume_repository import ResumeRepository
@@ -8,7 +8,10 @@ from app.config.database import SessionLocal
 from sqlalchemy.orm import Session
 from app.utils.security import get_current_user_username
 import logging
-
+from typing import List, Optional, Any
+from pydantic import BaseModel
+from fastapi.encoders import jsonable_encoder
+import os
 router = APIRouter(prefix="/resume", tags=["Resume"])
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,16 +52,49 @@ async def upload_resume(resume: UploadFile = File(...), db_session: Session = De
             raise HTTPException(status_code=500, detail="Internal Server Error")
     
     
-    
+
+# @router.get("/resume/{resume_id}")
+# async def get_resume_with_positions_and_skills(resume_id: str, db_session: Session = Depends(get_db)):
+#     resume_repository = ResumeRepository(db_session)
+#     user_repository = UserRepository()
+#     resume_service = ResumeService(resume_repository, user_repository)
+
+#     return await resume_service.get_resume_with_positions_and_skills(resume_id, db_session)
+
 @router.get("/resume/{resume_id}")
-async def get_resume_with_positions_and_skills(resume_id: str, db_session: Session = Depends(get_db)):
+async def get_resume_with_positions_and_skills(
+    resume_id: str,
+    request: Request,
+    include_pdf: bool = Query(False, description="If true, includes base64 PDF in JSON"),
+    db_session: Session = Depends(get_db),
+):
     resume_repository = ResumeRepository(db_session)
     user_repository = UserRepository()
     resume_service = ResumeService(resume_repository, user_repository)
 
-    return await resume_service.get_resume_with_positions_and_skills(resume_id, db_session)
+    data = await resume_service.get_resume_with_positions_and_skills(resume_id, include_pdf=include_pdf)
+    # Always include a direct URL so the frontend can stream/display the PDF efficiently
+    data["pdf_url"] = str(request.url_for("get_resume_pdf", resume_id=resume_id))
+    return JSONResponse(content=jsonable_encoder(data), status_code=200)
 
+@router.get("/resume/{resume_id}/pdf", name="get_resume_pdf")
+async def get_resume_pdf(
+    resume_id: str,
+    db_session: Session = Depends(get_db),
+):
+    resume_repository = ResumeRepository(db_session)
+    user_repository = UserRepository()
+    resume_service = ResumeService(resume_repository, user_repository)
 
+    pdf_path = await resume_service.get_resume_pdf_path(resume_id)
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="PDF file not found on disk")
+
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=os.path.basename(pdf_path),
+    )
 
 
 @router.get("/list")
@@ -77,7 +113,6 @@ async def list_resumes(
 
 
 
-
 @router.delete("/remove/{resume_id}")
 async def remove_resume(resume_id: str, db_session: Session = Depends(get_db)):
     resume_repository = ResumeRepository(db_session)
@@ -87,5 +122,38 @@ async def remove_resume(resume_id: str, db_session: Session = Depends(get_db)):
     success = await resume_service.remove_resume(resume_id, db_session)
     if success:
         return JSONResponse(content={"message": "Resume removed successfully!"}, status_code=200)
-    else:
-        raise HTTPException(status_code=404, detail="Resume not found!")
+    # Fallback (service already raises on not found / invalid UUID)
+    raise HTTPException(status_code=404, detail="Resume not found!")
+
+
+
+class UpdateResumeRequest(BaseModel):
+    # resume_detail
+    name: Optional[str] = None
+    phone_number: Optional[str] = None
+    birthday: Optional[str] = None          # accepts 'YYYY' / 'YYYY-MM' / 'YYYY-MM-DD' etc. (your parser handles) :contentReference[oaicite:9]{index=9}
+    working_exp: Optional[str] = None
+    education: Optional[Any] = None         # allow list[str] or string JSON
+    area: Optional[str] = None
+    resume_url: Optional[str] = None
+    operator: Optional[str] = None
+    # children (replace semantics if provided)
+    positions: Optional[List[str]] = None
+    skills: Optional[List[str]] = None
+
+
+@router.put("/{resume_id}")
+async def update_resume(
+    resume_id: str,
+    body: UpdateResumeRequest,
+    db_session: Session = Depends(get_db),
+):
+    resume_repository = ResumeRepository(db_session)
+    user_repository = UserRepository()
+    resume_service = ResumeService(resume_repository, user_repository)
+
+    updated = await resume_service.update_resume_full(
+        resume_id, body.dict(exclude_unset=True), db_session
+    )
+    return JSONResponse(content=jsonable_encoder(updated), status_code=200)
+

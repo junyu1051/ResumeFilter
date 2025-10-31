@@ -4,8 +4,8 @@ from uuid import uuid4
 from app.utils.pdf_utils import scan_pdf
 from app.repository.resume_repository import ResumeRepository
 from app.repository.user_repository import UserRepository
-import logging
 from fastapi.responses import JSONResponse
+import logging
 
 class ResumeService:
     def __init__(self, resume_repository, user_repository):
@@ -53,15 +53,7 @@ class ResumeService:
                 logger.error(f"Error scanning PDF: {e}")
                 raise HTTPException(status_code=500, detail="Error scanning the PDF.")
 
-            # Get user_id from operator (username)
-            # user = self.user_repository.get_by_username(db_session, operator)
-            # if not user:
-            #     user = None 
-            #     logger.error(f"User {operator} not found.")
-            #     # Handle case where user is not found, maybe raise an exception
-                
-
-            # Save the extracted data to the database
+    
             resume_detail = self.resume_repository.save_resume_detail(
                 name=resume_data['name'],
                 phone_number=resume_data['phone_number'],
@@ -76,7 +68,6 @@ class ResumeService:
             logger.info(f"Resume details for {resume_data['name']} saved to the database.")
 
             try:
-                # Save position and skill information
                 self.resume_repository.save_position(
                     resume_id=resume_detail.resume_id,
                     name=resume_data['name'],
@@ -120,14 +111,35 @@ class ResumeService:
 #---------------get_resume_with_positions_and_skills-------------------------------------------
 #-----------------------------------------------------------------------------------------------
 
-
-    async def get_resume_with_positions_and_skills(self, resume_id, db_session):
-        resume_data = self.resume_repository.get_resume_detail_with_position_and_skill(resume_id)
-        if not resume_data:
+    async def get_resume_with_positions_and_skills(self, resume_id: str, include_pdf: bool = False):
+        data = self.resume_repository.get_resume_detail_with_position_and_skill(resume_id)
+        if not data:
             raise HTTPException(status_code=404, detail="Resume not found")
+
+        if include_pdf:
+            # Read local PDF and add base64 to JSON payload
+            pdf_path = self.resume_repository.get_resume_file_path(resume_id)
+            if not pdf_path or not os.path.exists(pdf_path):
+                raise HTTPException(status_code=404, detail="PDF file not found on disk")
+            with open(pdf_path, "rb") as f:
+                raw = f.read()
+            data["pdf_base64"] = "data:application/pdf;base64," + base64.b64encode(raw).decode("utf-8")
+        return data
+
+    async def get_resume_pdf_path(self, resume_id: str) -> str:
+        pdf_path = self.resume_repository.get_resume_file_path(resume_id)
+        if not pdf_path:
+            raise HTTPException(status_code=404, detail="Resume not found")
+        return pdf_path
+
+
+    # async def get_resume_with_positions_and_skills(self, resume_id, db_session):
+    #     resume_data = self.resume_repository.get_resume_detail_with_position_and_skill(resume_id)
+    #     if not resume_data:
+    #         raise HTTPException(status_code=404, detail="Resume not found")
         
-        # Convert the result to JSON and return it
-        return JSONResponse(content=resume_data, status_code=200)
+    #     # Convert the result to JSON and return it
+    #     return JSONResponse(content=resume_data, status_code=200)
 
 #-----------------------------------------------------------------------------------------------
 #---------------get_all_resumes_paginated------------------------------------------------------
@@ -160,43 +172,48 @@ class ResumeService:
 #---------------remove resume--------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------------
 
-
     async def remove_resume(self, resume_id, db_session):
-        resume = self.resume_repository.get_resume_by_id(resume_id)
-        if resume:
-            # Remove the file from the filesystem
-            if os.path.exists(resume.resume_url):
+        # Use repository delete that returns the removed ResumeDetail or None
+        resume = self.resume_repository.delete_resume_tree(resume_id)
+        if not resume:
+            raise HTTPException(status_code=404, detail="Resume not found")
+
+        # Best-effort file removal (ignore if missing)
+        try:
+            if resume.resume_url and os.path.exists(resume.resume_url):
                 os.remove(resume.resume_url)
-            
-            db_session.delete(resume)
-            db_session.commit()
-            return True
-        return False
+        except Exception:
+            # Do not fail deletion if filesystem cleanup fails
+            pass
+
+        return True
 
 
 #-----------------------------------------------------------------------------------------------
-#---------------update_resume-------------------------------------------------------------------
+#---------------update_resume_full---------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------------
 
-    async def update_resume(self, resume_id, resume_data, db_session):
-        return self.resume_repository.update_resume(
-            resume_id,
-            resume_data.get('name'),
-            resume_data.get('phone_number'),
-            resume_data.get('birthday'),
-            resume_data.get('working_exp'),
-            resume_data.get('education'),
-            resume_data.get('area'),
-            resume_data.get('resume_url')
+    async def update_resume_full(self, resume_id: str, payload: dict, db_session):
+        
+        detail_updates = {
+            k: v for k, v in payload.items()
+            if k in {"name", "phone_number", "birthday", "working_exp", "education", "area", "resume_url", "operator"}
+        }
+        positions = payload.get("positions", None)
+        skills = payload.get("skills", None)
+
+        updated = self.resume_repository.update_resume_full(
+            resume_id_str=resume_id,
+            detail_updates=detail_updates if detail_updates else None,
+            positions=positions if isinstance(positions, list) else None,
+            skills=skills if isinstance(skills, list) else None,
         )
 
-#-----------------------------------------------------------------------------------------------
-#---------------scan_resume---------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------
+        if not updated:
+            raise HTTPException(status_code=404, detail="Resume not found")
 
-    async def scan_resume(self, resume):
-        # This will be used to scan the PDF and extract data
-        # Assuming resume object has a 'resume_url' attribute with the file path
-        return scan_pdf(resume.resume_url)
+        return updated
+
+
 
 
