@@ -147,26 +147,26 @@ class ResumeService:
 #-----------------------------------------------------------------------------------------------
  
     async def get_all_resumes_paginated(self, page: int, page_size: int):
-        """Paginate resumes"""
         if page < 1 or page_size < 1:
             raise HTTPException(status_code=400, detail="Invalid page or page_size")
 
         offset = (page - 1) * page_size
-        resumes = self.resume_repository.get_paginated_resumes(offset, page_size)
+        rows = self.resume_repository.get_paginated_resumes(offset, page_size)
 
-        if not resumes:
-            raise HTTPException(status_code=404, detail="No resumes found")
+        # Allow empty pages instead of 404 so the UI can show "No records".
+        if rows is None:
+            rows = []
 
-        # Convert results to list of dicts (JSON serializable)
         result = [
             {
+                "resume_id": str(r.resume_id),       # ← include as string
                 "name": r.name,
                 "operator": r.operator,
                 "gmt_create": str(r.gmt_create),
                 "gmt_modify": str(r.gmt_modify),
-                "position_name": r.position_name
+                "position_name": r.position_name,
             }
-            for r in resumes
+            for r in rows
         ]
         return result
 #-----------------------------------------------------------------------------------------------

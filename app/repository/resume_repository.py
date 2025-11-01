@@ -229,6 +229,7 @@ class ResumeRepository:
     def get_paginated_resumes(self, offset: int, limit: int):
         query = (
             self.db_session.query(
+                ResumeDetail.resume_id,          # ← add this
                 ResumeDetail.name,
                 ResumeDetail.operator,
                 ResumeDetail.gmt_create,
@@ -241,7 +242,6 @@ class ResumeRepository:
             .limit(limit)
         )
         return query.all()
-    
 
       
 #-----------------------------------------------------------------------------------------------
